@@ -107,7 +107,6 @@ func (r Relay) serve(messages <-chan Message, errs <-chan error) error {
 }
 
 func (r Relay) relay(m Message) {
-	log.Println(m.SourceIP.String() + " -> 239.255.255.250:1900")
 	host, ps, err := net.SplitHostPort(m.SourceIP.String())
 	if err != nil {
 		log.Printf("error splitting host and port: %s\n", err.Error())

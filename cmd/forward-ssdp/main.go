@@ -14,11 +14,20 @@ func main() {
 	var err error
 	if len(os.Args) > 1 {
 		ifList, err = netutil.GetInterfaces(netutil.WithNames(os.Args[1:]))
+		if len(ifList) != len(os.Args) - 1 {
+			log.Fatalln("error: one or more requested interfaces were not found")
+		}
 	} else {
-		ifList, err = netutil.GetInterfaces(netutil.IsLoopback(false), netutil.IsUp(true))
+		ifList, err = netutil.GetInterfaces(
+			netutil.IsNotLoopback(), netutil.IsUp(), netutil.HasIPv4Address(), netutil.HasNoPublicIPv4Address(),
+		)
 	}
 	if err != nil {
 		log.Fatalf("error: %s\n", err.Error())
+	}
+
+	if len(ifList) == 0 {
+		log.Fatalf("No interfaces matched the specified criteria.")
 	}
 
 	for _, ifi := range ifList {
