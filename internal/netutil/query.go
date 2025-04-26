@@ -39,7 +39,7 @@ func WithName(name string) QueryParam {
 	}
 }
 
-func WithNames(names []string) QueryParam {
+func WithNames(names ...string) QueryParam {
 	return func(q *interfaceQuery) error {
 		q.names = append(q.names, names...)
 		return nil
@@ -47,13 +47,10 @@ func WithNames(names []string) QueryParam {
 }
 
 func WithIP(ip string) QueryParam {
-	return func(q *interfaceQuery) error {
-		q.ips = append(q.ips, ip)
-		return nil
-	}
+	return WithIPs(ip)
 }
 
-func WithIPs(ips []string) QueryParam {
+func WithIPs(ips ...string) QueryParam {
 	return func(q *interfaceQuery) error {
 		q.ips = append(q.ips, ips...)
 		return nil
@@ -61,16 +58,76 @@ func WithIPs(ips []string) QueryParam {
 }
 
 func WithMAC(mac string) QueryParam {
-	return WithMACs([]string{mac})
+	return WithMACs(mac)
 }
 
-func WithMACs(macs []string) QueryParam {
+func WithMACs(macs ...string) QueryParam {
 	return func(q *interfaceQuery) error {
 		hwAddrs, err := parseMacs(macs)
 		if err != nil {
 			return err
 		}
 		q.macs = append(q.macs, hwAddrs...)
+		return nil
+	}
+}
+
+func HasIPv4Address() QueryParam {
+	return hasIPv4Address(true)
+}
+
+func HasNoIPv4Address() QueryParam {
+	return hasIPv4Address(false)
+}
+
+func hasIPv4Address(b bool) QueryParam {
+	return func(q *interfaceQuery) error {
+		q.hasIPv4 = &b
+		return nil
+	}
+}
+
+func HasPublicIPv4Address() QueryParam {
+	return hasPublicIPv4Address(true)
+}
+
+func HasNoPublicIPv4Address() QueryParam {
+	return hasPublicIPv4Address(false)
+}
+
+func hasPublicIPv4Address(b bool) QueryParam {
+	return func(q *interfaceQuery) error {
+		q.hasPublicIPv4 = &b
+		return nil
+	}
+}
+
+func HasIPv6Address() QueryParam {
+	return hasIPv6Address(true)
+}
+
+func HasNoIPv6Address() QueryParam {
+	return hasIPv6Address(false)
+}
+
+func hasIPv6Address(b bool) QueryParam {
+	return func(q *interfaceQuery) error {
+		q.hasIPv6 = &b
+		return nil
+	}
+}
+
+func HasPublicIPv6Address() QueryParam {
+	return hasPublicIPv6Address(true)
+}
+
+func HasNoPublicIPv6Address() QueryParam {
+	return hasPublicIPv6Address(false)
+}
+
+func hasPublicIPv6Address(b bool) QueryParam {
+	return func(q *interfaceQuery) error {
+		q.hasPublicIPv6 = &b
 		return nil
 	}
 }
@@ -90,7 +147,15 @@ func isUp(up bool) QueryParam {
 	}
 }
 
-func IsBroadcast(b bool) QueryParam {
+func IsBroadcast() QueryParam {
+	return isBroadcast(true)
+}
+
+func IsNotBroadcast() QueryParam {
+	return isBroadcast(false)
+}
+
+func isBroadcast(b bool) QueryParam {
 	return func(q *interfaceQuery) error {
 		q.isBroadcast = &b
 		return nil
@@ -112,46 +177,32 @@ func isLoopback(lo bool) QueryParam {
 	}
 }
 
-func IsPointToPoint(ptp bool) QueryParam {
+func IsPointToPoint() QueryParam {
+	return isPointToPoint(true)
+}
+
+func IsNotPointToPoint() QueryParam {
+	return isPointToPoint(false)
+}
+
+func isPointToPoint(ptp bool) QueryParam {
 	return func(q *interfaceQuery) error {
 		q.isPointToPoint = &ptp
 		return nil
 	}
 }
 
-func IsMulticast(m bool) QueryParam {
+func IsMulticast() QueryParam {
+	return isMulticast(true)
+}
+
+func IsNotMulticast() QueryParam {
+	return isMulticast(false)
+}
+
+func isMulticast(m bool) QueryParam {
 	return func(q *interfaceQuery) error {
 		q.isMulticast = &m
-		return nil
-	}
-}
-
-func HasIPv4Address() QueryParam {
-	return hasIPv4Address(true)
-}
-
-func HasNoIPv4Address() QueryParam {
-	return hasIPv4Address(false)
-}
-
-func hasIPv4Address(b bool) QueryParam {
-	return func(q *interfaceQuery) error {
-		q.hasPublicIP = &b
-		return nil
-	}
-}
-
-func HasPublicIPv4Address() QueryParam {
-	return hasPublicIPv4Address(true)
-}
-
-func HasNoPublicIPv4Address() QueryParam {
-	return hasPublicIPv4Address(false)
-}
-
-func hasPublicIPv4Address(b bool) QueryParam {
-	return func(q *interfaceQuery) error {
-		q.hasPublicIP = &b
 		return nil
 	}
 }
@@ -165,7 +216,10 @@ type interfaceQuery struct {
 	isLoopback     *bool
 	isPointToPoint *bool
 	isMulticast    *bool
-	hasPublicIP	   *bool
+	hasIPv4        *bool
+	hasPublicIPv4  *bool
+	hasIPv6        *bool
+	hasPublicIPv6  *bool
 	FailOnError    bool
 }
 
@@ -198,30 +252,52 @@ func matches(q interfaceQuery, iface net.Interface) (bool, error) {
 		}
 	}
 
-	if len(q.ips) > 0 || q.hasPublicIP != nil {
-		addrs, err := iface.Addrs()
+	matchedIP := false
+	hasIPv4 := false
+	hasPublicIPv4 := false
+	hasIPv6 := false
+	hasPublicIPv6 := false
+	if len(q.ips) > 0 || q.hasIPv4 != nil || q.hasPublicIPv4 != nil || q.hasIPv6 != nil || q.hasPublicIPv6 != nil {
+		addrs, err := getAddrsForInterface(iface)
 		if err != nil && q.FailOnError {
 			return false, fmt.Errorf("filtering interfaces: %w", err)
 		}
-		matchedIP := false
-		foundPublicIPv4 := false
+
 		for _, a := range addrs {
 			switch t := a.(type) {
 			case *net.IPNet:
 				if stringArrayContains(q.ips, t.IP.String()) {
 					matchedIP = true
 				}
-				if t.IP.To4() != nil && !isPrivateIPv4(t.IP) {
-					foundPublicIPv4 = true
+				if t.IP.To4() != nil {
+					hasIPv4 = true
+					if !isPrivateIPv4(t.IP) {
+						hasPublicIPv4 = true
+					}
+				} else if t.IP.To16() != nil {
+					hasIPv6 = true
+					if !isPrivateIPv6(t.IP) {
+						hasPublicIPv6 = true
+					}
 				}
 			}
 		}
-		if len(q.ips) > 0 && !matchedIP {
-			return false, nil
-		}
-		if q.hasPublicIP != nil && foundPublicIPv4 != *q.hasPublicIP {
-			return false, nil
-		}
+	}
+
+	if len(q.ips) > 0 && !matchedIP {
+		return false, nil
+	}
+	if q.hasIPv4 != nil && hasIPv4 != *q.hasIPv4 {
+		return false, nil
+	}
+	if q.hasPublicIPv4 != nil && hasPublicIPv4 != *q.hasPublicIPv4 {
+		return false, nil
+	}
+	if q.hasIPv6 != nil && hasIPv6 != *q.hasIPv6 {
+		return false, nil
+	}
+	if q.hasPublicIPv6 != nil && hasPublicIPv6 != *q.hasPublicIPv6 {
+		return false, nil
 	}
 
 	return true, nil
@@ -229,4 +305,8 @@ func matches(q interfaceQuery, iface net.Interface) (bool, error) {
 
 func flagMatches(desired *bool, iface net.Interface, flag net.Flags) bool {
 	return desired == nil || *desired == hasFlag(iface, flag)
+}
+
+var getAddrsForInterface = func(iface net.Interface) ([]net.Addr, error) {
+	return iface.Addrs()
 }

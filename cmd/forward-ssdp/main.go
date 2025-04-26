@@ -13,8 +13,8 @@ func main() {
 	var ifList []net.Interface
 	var err error
 	if len(os.Args) > 1 {
-		ifList, err = netutil.GetInterfaces(netutil.WithNames(os.Args[1:]))
-		if len(ifList) != len(os.Args) - 1 {
+		ifList, err = netutil.GetInterfaces(netutil.WithNames(os.Args[1:]...))
+		if len(ifList) != len(os.Args)-1 {
 			log.Fatalln("error: one or more requested interfaces were not found")
 		}
 	} else {
